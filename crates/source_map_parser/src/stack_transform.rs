@@ -131,7 +131,7 @@ mod tests {
     assert_eq!(stacks.len(), lines.len());
     assert_eq!(stacks[0].line, 10);
     assert_eq!(stacks[1].column, 15);
-  // 异步前缀被正则忽略，只保留方法名
+  // The async prefix is ignored by the regex, only the method name is kept
   assert_eq!(stacks[2].name, "bar");
     assert_eq!(stacks[3].line, 40);
   }
