@@ -1,8 +1,6 @@
 use serde::Serialize;
 use serde_json;
 use wasm_bindgen::prelude::*;
-// Removed network fetch dependencies to keep WASM pure (no remote I/O)
-
 use js_sys;
 use source_map_parser::{stack_transform, token_generator, SourceMapParserClient}; // for Function type
 
