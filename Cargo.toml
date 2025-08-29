@@ -3,7 +3,7 @@ members = ["crates/source_map_parser", "crates/node_sdk"]
 resolver = "2"
 
 [workspace.package]
-authors = ["MasonChow"]
+authors = ["MasonChow <masonchat@foxmail.com>"]
 description = "High performance Source Map stack trace parser & mapper (Rust + WASM)"
 edition = "2021"
 license = "MIT"

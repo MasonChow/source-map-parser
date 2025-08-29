@@ -114,3 +114,48 @@ impl ErrorStack<'_> {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_various_stack_lines() {
+    let lines = vec![
+      "at foo (https://example.com/app.js:10:5)",
+      "at https://example.com/app.js:20:15",
+      "async bar@https://example.com/app.js:30:25",
+      "@https://example.com/app.js:40:35",
+    ];
+    let stacks: Vec<_> = lines.iter().filter_map(|l| parse_stack_line(l)).collect();
+    assert_eq!(stacks.len(), lines.len());
+    assert_eq!(stacks[0].line, 10);
+    assert_eq!(stacks[1].column, 15);
+  // 异步前缀被正则忽略，只保留方法名
+  assert_eq!(stacks[2].name, "bar");
+    assert_eq!(stacks[3].line, 40);
+  }
+
+  #[test]
+  fn parse_stack_trace_mixed_and_invalid() {
+    let trace = "at foo (https://a/x.js:1:1)\nINVALID LINE\n@https://a/x.js:2:5";
+    let stacks = parse_stack_trace(trace);
+    assert_eq!(stacks.len(), 2);
+    assert_eq!(stacks[1].column, 5);
+  }
+
+  #[test]
+  fn parse_error_stack_extract_message() {
+    let raw = "ReferenceError: x is not defined\n  at foo (https://a/app.js:3:7)";
+    let es = ErrorStack::from_raw(raw);
+    assert_eq!(es.error_message, "ReferenceError: x is not defined");
+    assert_eq!(es.stacks.len(), 1);
+    assert_eq!(es.stacks[0].line, 3);
+  }
+
+  #[test]
+  fn parse_stack_line_rejects_non_stack() {
+    assert!(parse_stack_line("Just a message without coords").is_none());
+    assert!(parse_stack_line("Error: something").is_none());
+  }
+}

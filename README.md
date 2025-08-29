@@ -86,9 +86,9 @@ fn main() {
 }
 ```
 
-## WASM 导出快速使用 (新增高层 API)
+## WASM (Node) 导出快速使用
 
-生成后的 web 包 (参考 web_pkg) 暴露以下函数：
+生成后的 Node 包 (`crates/node_sdk/pkg`) 暴露以下函数：
 
 | 函数                                                         | 说明                                   |
 | ------------------------------------------------------------ | -------------------------------------- |
@@ -100,17 +100,14 @@ fn main() {
 | `map_stack_trace(sm, stack_trace)`                           | 多行堆栈批量映射 (不含首行错误消息)    |
 | `map_error_stack(sm, error_stack_raw, context_lines?)`       | 整段错误堆栈 (含首行) 映射，可选上下文 |
 
-浏览器示例：
+Node 端示例：
 
-```html
-<script type="module">
-  import init, { map_error_stack } from '.../source_map_parser_wasm_pkg.js';
-  await init();
-  const sm = await fetch('app.js.map').then((r) => r.text());
-  const err = `ReferenceError: x is not defined\n  at foo (https://example.com/app.js:10:5)`;
-  const mapped = JSON.parse(map_error_stack(sm, err, 2));
-  console.log(mapped);
-</script>
+```bash
+node - <<'EOF'
+const m = require('./crates/node_sdk/pkg');
+const sm = JSON.stringify({version:3,sources:['a.js'],sourcesContent:['fn()\n'],names:[],mappings:'AAAA'});
+console.log(JSON.parse(m.lookup_token(sm,1,0)));
+EOF
 ```
 
 ## 开发
@@ -118,6 +115,27 @@ fn main() {
 ```bash
 cargo test
 ```
+
+### WASM 测试 (Node)
+
+使用 `wasm-pack test --node` 运行 `crates/node_sdk` 下的绑定测试：
+
+```bash
+wasm-pack test --node crates/node_sdk
+```
+
+（不覆盖浏览器环境；如未来需要再扩展）
+
+CI 已提供 GitHub Actions 工作流 `.github/workflows/ci.yml`，覆盖：
+
+1. Rust 原生单元/集成测试
+2. Node 环境下 WASM 测试 (wasm-pack test --node)
+
+调试提示：
+
+- 确认已安装目标：`rustup target add wasm32-unknown-unknown`
+- 避免直接 `cargo test --target wasm32-unknown-unknown`（缺少 runner 会尝试执行 .wasm 导致 126 错误）
+- 添加新测试需使用 `#[wasm_bindgen_test]` 标注函数
 
 更多多端使用方式：
 
@@ -169,7 +187,7 @@ console.log(JSON.parse(m.lookup_token(sm,1,0)));
 EOF
 ```
 
-浏览器 / ESM 版本（web 目标）暂未在该分支提供，如需支持，可新增独立 crate（例如 `web_sdk`）并使用 `wasm-bindgen` 的 `--target web` 或 `--target bundler` 方案。
+（不提供浏览器 / ESM 目标，本分支仅关注 Node 使用）
 
 ## TODO / Roadmap (扩展)
 
