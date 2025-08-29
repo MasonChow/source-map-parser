@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, init]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      WASM_PACK_VERSION: 0.12.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+          override: true
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Cache wasm-pack
+        id: cache-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: ${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}
+      - name: Ensure wasm-pack installed
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            echo "wasm-pack not found, installing $WASM_PACK_VERSION";
+            curl -sL "https://github.com/rustwasm/wasm-pack/releases/download/v${WASM_PACK_VERSION}/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+              | tar xz -C /tmp
+            mv /tmp/wasm-pack-v${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack ~/.cargo/bin/
+            chmod +x ~/.cargo/bin/wasm-pack
+          else
+            echo "Found existing wasm-pack: $(wasm-pack --version)";
+          fi
+          ls -l ~/.cargo/bin/ | grep wasm-pack || echo 'wasm-pack binary not listed'
+      - name: Native tests
+        run: cargo test --workspace --exclude source_map_parser_node --all-features
+      - name: WASM node tests
+        run: wasm-pack test --node crates/node_sdk

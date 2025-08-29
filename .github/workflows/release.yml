@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  WASM_PACK_VERSION: 0.12.1
+
+jobs:
+  verify-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+      - name: Check crate versions match tag
+        run: |
+          TAG_VERSION=${{ steps.extract.outputs.version }}
+          CORE_VERSION=$(grep '^version' crates/source_map_parser/Cargo.toml | head -1 | cut -d '"' -f2)
+          NODE_VERSION=$(grep '^version' crates/node_sdk/Cargo.toml | head -1 | cut -d '"' -f2)
+          echo "core: $CORE_VERSION  node: $NODE_VERSION  tag: $TAG_VERSION"
+          if [ "$CORE_VERSION" != "$TAG_VERSION" ] || [ "$NODE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch. Please bump crate versions to $TAG_VERSION before tagging." >&2
+            exit 1
+          fi
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+          override: true
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Cache wasm-pack
+        id: cache-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: ${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}
+      - name: Install wasm-pack
+        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
+        run: curl -sSf https://raw.githubusercontent.com/rustwasm/wasm-pack/master/docs/book/src/install.sh | bash -s -- -f -v $WASM_PACK_VERSION
+      - name: Run tests (native)
+        run: cargo test --workspace --exclude source_map_parser_node --all-features
+      - name: Run tests (wasm)
+        run: wasm-pack test --node crates/node_sdk
+      - name: Generate CHANGELOG
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          chmod +x scripts/generate-changelog.sh
+          ./scripts/generate-changelog.sh ${{ steps.extract.outputs.version }} "$REPO_URL"
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
+  publish-crates:
+    needs: verify-and-test
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Cargo login
+        run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish core crate
+        run: |
+          cargo publish -p source_map_parser --no-verify || echo "core crate already published"
+      - name: Publish node wasm crate
+        run: |
+          cargo publish -p source_map_parser_node --no-verify || echo "node crate already published"
+
+  publish-npm:
+    needs: [verify-and-test]
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+          override: true
+      - name: Cache wasm-pack
+        id: cache-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: ${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}
+      - name: Install wasm-pack
+        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
+        run: curl -sSf https://raw.githubusercontent.com/rustwasm/wasm-pack/master/docs/book/src/install.sh | bash -s -- -f -v $WASM_PACK_VERSION
+      - name: Build wasm package (node)
+        run: |
+          wasm-pack build crates/node_sdk --target nodejs --out-dir pkg --release
+          ls -l pkg
+      - name: Set npm auth
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+      - name: Publish to npm
+        run: |
+          cd pkg
+          npm publish --access public || echo "npm package already published"
+
+  github-release:
+    needs: [publish-crates, publish-npm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download changelog artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+      - name: Extract current release notes
+        id: notes
+        run: |
+          awk '/^## v/' CHANGELOG.md | head -1 > notes.txt
+          # Append section under first heading until next heading
+          awk 'NR==1{p=1} /^## v/ && NR>1{p=0} p{print}' CHANGELOG.md > notes.txt
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: source-map-parser ${{ github.ref_name }}
+          body_path: notes.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-gitlab:
+    needs: [verify-and-test]
+    runs-on: ubuntu-latest
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
+      GITLAB_PROJECT_PATH: ${{ secrets.GITLAB_PROJECT_PATH }}
+      VERSION: ${{ needs.verify-and-test.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare artifacts
+        run: |
+          cargo package -p source_map_parser --allow-dirty
+          cargo package -p source_map_parser_node --allow-dirty
+          wasm-pack build crates/node_sdk --target nodejs --out-dir pkg --release
+          tar czf source_map_parser-${VERSION}.crate.tar.gz target/package/source_map_parser-*.crate
+          tar czf source_map_parser_node-${VERSION}.crate.tar.gz target/package/source_map_parser_node-*.crate
+          tar czf source_map_parser_node-wasm-${VERSION}.tgz -C pkg .
+      - name: Upload to GitLab generic packages
+        if: env.GITLAB_TOKEN != ''
+        run: |
+          for f in source_map_parser-${VERSION}.crate.tar.gz source_map_parser_node-${VERSION}.crate.tar.gz source_map_parser_node-wasm-${VERSION}.tgz; do
+            echo "Uploading $f"
+            curl --fail -H "PRIVATE-TOKEN: $GITLAB_TOKEN" --upload-file "$f" \
+              "https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/generic/source-map-parser/${VERSION}/$f"
+          done
+      - name: Publish to GitLab npm registry
+        if: env.GITLAB_TOKEN != ''
+        run: |
+          if [ -z "$GITLAB_PROJECT_PATH" ]; then
+            echo "GITLAB_PROJECT_PATH secret not set, skip GitLab npm publish";
+            exit 0;
+          fi
+          # Configure .npmrc for GitLab registry (avoid heredoc for YAML lint friendliness)
+          echo "@${GITLAB_PROJECT_PATH#*/}:registry=https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/" > .npmrc
+          echo "//gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/:_authToken=${GITLAB_TOKEN}" >> .npmrc
+          echo "always-auth=true" >> .npmrc
+          # Adjust package name for GitLab scope if needed
+          PACKAGE_JSON=pkg/package.json
+          if jq -e '.name' "$PACKAGE_JSON" >/dev/null 2>&1; then
+            ORIGINAL_NAME=$(jq -r '.name' $PACKAGE_JSON)
+            if [[ ! $ORIGINAL_NAME == @*/* ]]; then
+              # prepend scope from project path last segment
+              SCOPE="@${GITLAB_PROJECT_PATH##*/}"
+              TMP=$(mktemp)
+              jq --arg scope "$SCOPE" --arg name "$ORIGINAL_NAME" '.name = ($scope + "/" + $name)' $PACKAGE_JSON > $TMP && mv $TMP $PACKAGE_JSON
+            fi
+          fi
+          (cd pkg && npm publish --registry https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/ || echo "GitLab npm publish skipped/failed")
