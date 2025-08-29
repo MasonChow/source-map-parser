@@ -13,4 +13,4 @@ pushd "$CRATE_DIR" >/dev/null
 wasm-pack build --target nodejs --release "$@"
 popd >/dev/null
 
-echo "\nDone. Output at crates/node_sdk/pkg"
+printf "\nDone. Output at crates/node_sdk/pkg\n"
