@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main, init]
   pull_request:
     branches: [main, init]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -35,10 +34,16 @@ jobs:
         with:
           path: ~/.cargo/bin/wasm-pack
           key: ${{ runner.os }}-wasm-pack-${{ env.WASM_PACK_VERSION }}
+      - name: Ensure wasm-pack installed
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            echo "wasm-pack not found, installing $WASM_PACK_VERSION";
+            curl -sSf https://raw.githubusercontent.com/rustwasm/wasm-pack/master/docs/book/src/install.sh | bash -s -- -f -v $WASM_PACK_VERSION;
+          else
+            echo "Found existing wasm-pack: $(wasm-pack --version)";
+          fi
+          ls -l ~/.cargo/bin/ | grep wasm-pack || echo 'wasm-pack binary not listed'
       - name: Native tests
         run: cargo test --workspace --exclude source_map_parser_node --all-features
-      - name: Install wasm-pack
-        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
-        run: curl -sSf https://raw.githubusercontent.com/rustwasm/wasm-pack/master/docs/book/src/install.sh | bash -s -- -f -v $WASM_PACK_VERSION
       - name: WASM node tests
         run: wasm-pack test --node crates/node_sdk
