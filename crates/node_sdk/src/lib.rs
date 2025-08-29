@@ -129,7 +129,7 @@ pub fn generate_token_by_single_stack(
   let result: Option<token_generator::Token> =
     token_generator::get_stack_source(&source_map_content, line, column, context_offset);
 
-  let json = serde_json::to_string(&result).unwrap_or_else(|_| panic!("to_string failed"));
+  let json = serde_json::to_string(&result).unwrap_or_else(|_| "{\"error\":\"serialization failed\"}".to_string());
 
   JsValue::from_str(&json)
 }
