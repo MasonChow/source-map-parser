@@ -115,7 +115,7 @@ pub struct GenerateToken {
   tasks: Vec<GenerateTask>,
 }
 impl GenerateToken {
-  pub fn new() -> GenerateToken {
+  pub fn new() -> Self {
     GenerateToken {
       tokens: Vec::new(),
       tasks: Vec::new(),
