@@ -47,7 +47,7 @@ fn main() {
 - SourceMapParserClient::map_stack_trace: 多行堆栈批量映射
 - SourceMapParserClient::map_error_stack: 带首行错误消息的整块错误堆栈映射，可选上下文
 
-> 开发 / 构建 / 测试 / Roadmap 请见: [DEVELOPMENT.md](./DEVELOPMENT.md)
+> 开发 / 构建 / 测试 / Roadmap 请见: [CONTRIBUTORS.md](./CONTRIBUTORS.md)
 
 ## 通用上下文查询示例
 
@@ -81,6 +81,6 @@ Node (WASM 绑定) 的全部 API、构建、测试、发布指引已迁移至 `c
 
 ### 更多文档
 
-- 开发/构建/Roadmap: [DEVELOPMENT.md](./DEVELOPMENT.md)
+- 开发/构建/Roadmap: [CONTRIBUTORS.md](./CONTRIBUTORS.md)
 - Node / WASM 使用: [crates/node_sdk/README.md](./crates/node_sdk/README.md)
 - Rust crate 细节: [crates/source_map_parser/README.md](./crates/source_map_parser/README.md)

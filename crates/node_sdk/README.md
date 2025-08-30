@@ -43,4 +43,4 @@ console.log(JSON.parse(m.lookup_token(sm, 1, 0)));
 
 ---
 
-更多开发 / 构建 / 测试 / 发布 / Roadmap 内容: 参见仓库根 `DEVELOPMENT.md`。
+更多开发 / 构建 / 测试 / 发布 / Roadmap 内容: 参见仓库根 `CONTRIBUTORS.md`。
