@@ -1,7 +1,7 @@
 [package]
 name = "source_map_parser_node"
 description = "A WebAssembly package for source_map_parser"
-version = "0.1.0"
+version = "0.1.2"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
