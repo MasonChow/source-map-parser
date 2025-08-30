@@ -94,9 +94,15 @@ jobs:
     needs: [verify-and-test]
     runs-on: ubuntu-latest
     env:
-  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # ensure repository secret NPM_TOKEN is set
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # ensure repository secret NPM_TOKEN is set
     steps:
       - uses: actions/checkout@v4
+      - name: Verify NPM token
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN secret is not set or empty" >&2
+            exit 1
+          fi
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
