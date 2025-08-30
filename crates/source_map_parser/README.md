@@ -51,4 +51,4 @@ fn main() {
 
 ---
 
-更多：开发与 Roadmap 查看仓库根 `DEVELOPMENT.md`。
+更多：开发与 Roadmap 查看仓库根 `CONTRIBUTORS.md`。
