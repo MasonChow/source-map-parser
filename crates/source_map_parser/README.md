@@ -1,4 +1,4 @@
-# source_map_parser (原 js_stack_parser 核心能力迁移)
+# source_map_parser
 
 通用 Source Map 解析与堆栈源码还原核心库。提供多引擎（V8 / Firefox / Safari）堆栈解析、行列映射、源码上下文提取、整段错误堆栈批量还原等能力。
 
@@ -49,22 +49,6 @@ fn main() {
 }
 ```
 
-## 升级说明
-
-旧 crate 名称 `js_stack_parser` 已被替换；核心 API 在新 crate 下保持一致，原始低层函数仍可在迁移期保留（如需）但建议使用 `SourceMapParserClient` 高层封装。
-
-## 设计原则
-
-- 纯计算：不做文件/网络 I/O
-- 明确分层：解析 / 定位 / 上下文 分离
-- 稳定 API：Facade 封装便于多端 (WASM / Node) 绑定
-
-## 计划
-
-- LRU SourceMap 缓存
-- bench 性能基准
-- 失败行诊断信息增强
-
 ---
 
-欢迎 issue / PR 进一步完善。
+更多：开发与 Roadmap 查看仓库根 `DEVELOPMENT.md`。
