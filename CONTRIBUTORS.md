@@ -190,26 +190,99 @@ docs: update README with new API examples
 
 #### 3. 创建 Release
 
-**GitHub Actions 工作流**：
-项目配置了自动化发布流程，包含以下步骤：
+**自动化发布流程 (推荐)**：
 
-1. **CI 检查** (`.github/workflows/ci.yml`):
-   - 多 Rust 版本兼容性测试
-   - WASM 构建测试
-   - 代码质量检查
+项目配置了完整的 GitHub Actions 自动化发布流程：
 
-2. **发布准备** (`.github/workflows/prepare-release.yml`):
-   - 版本号验证
-   - 构建发布版本
-   - 运行完整测试套件
+**3.1 准备发布** (使用 `prepare-release.yml` 工作流):
 
-3. **正式发布** (`.github/workflows/release.yml`):
-   - 创建 Git 标签
-   - 发布到 crates.io (Rust)
-   - 发布到 npm (WASM/Node.js)
+1. 在 GitHub 仓库页面，点击 "Actions" 标签
+2. 选择 "Prepare Release" 工作流
+3. 点击 "Run workflow" 按钮
+4. 配置发布参数：
+   - `bump_type`: 版本升级类型 (patch/minor/major/prepatch/preminor/premajor/prerelease)
+   - `preid`: 预发布标识符 (beta/rc/alpha)，仅在预发布时需要
+   - `dry_run`: 设为 'false' 以实际创建分支和PR
+5. 点击绿色 "Run workflow" 按钮执行
+
+此工作流将：
+- 自动计算新版本号
+- 更新所有 Cargo.toml 文件中的版本
+- 生成变更日志 (CHANGELOG.md)
+- 创建发布准备分支 `chore/release-vX.Y.Z`
+- 创建 Pull Request 供审查
+
+**3.2 完成发布** (使用 `finalize-release.yml` 工作流):
+
+当发布准备 PR 被合并到发布分支后：
+
+1. 切换到对应的发布分支 (如 `release/1.2.3`)
+2. 在 GitHub Actions 中选择 "Finalize Release (Stable)" 工作流
+3. 点击 "Run workflow"，输入目标版本号 (如 `1.2.3`)
+4. 工作流将：
+   - 验证当前在正确的发布分支
+   - 确保 Cargo.toml 使用稳定版本号
+   - 创建 Git 标签 `v1.2.3`
+   - 推送标签到仓库
+   - 创建 PR 将更改合并回 main 分支
+
+**3.3 自动发布** (通过 `release.yml` 工作流):
+
+当版本标签被推送到仓库时，自动触发完整发布流程：
+
+1. **验证和测试**：
+   - 提取版本信息，判断是否为预发布版本
+   - 同步 node_sdk 的版本号
+   - 运行完整测试套件 (原生 + WASM)
+   - 生成最终变更日志
+
+2. **NPM 发布**：
+   - 构建 WASM 包
+   - 发布到 npm (稳定版本使用默认 tag，预发布版本使用 beta tag)
+
+3. **GitHub Release**：
+   - 提取当前版本的发布说明
    - 创建 GitHub Release
+   - 自动标记预发布状态
 
-**手动发布** (如需要):
+**GitHub Release 操作指引**：
+
+**方式一：自动创建 (推荐)**
+- 推送版本标签时自动创建 GitHub Release
+- Release 标题格式：`source-map-parser vX.Y.Z`
+- 自动从 CHANGELOG.md 提取发布说明
+- 预发布版本自动标记为 "prerelease"
+
+**方式二：手动创建 GitHub Release**
+
+如需手动创建或修改 GitHub Release：
+
+1. **准备工作**：
+   ```bash
+   # 确保标签已推送
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+
+2. **创建 Release**：
+   - 进入 GitHub 仓库页面
+   - 点击右侧 "Releases" 链接
+   - 点击 "Create a new release" 按钮
+
+3. **填写 Release 信息**：
+   - **Tag version**: 选择或输入标签 (如 `v1.2.3`)
+   - **Release title**: 输入标题 (如 `source-map-parser v1.2.3`)
+   - **Describe this release**: 从 CHANGELOG.md 复制对应版本的更新内容
+   - **预发布版本**: 勾选 "Set as a pre-release" (如适用)
+
+4. **发布选项**：
+   - **Set as the latest release**: 稳定版本勾选此项
+   - **Create a discussion for this release**: 可选，用于社区讨论
+
+5. **点击 "Publish release"** 完成创建
+
+**手动包发布** (如自动化失败):
+
 ```bash
 # Rust crate 发布
 cd crates/source_map_parser
@@ -219,8 +292,16 @@ cargo publish
 cd crates/node_sdk
 wasm-pack build --target nodejs --release
 cd pkg
-npm publish
+
+# NPM 发布
+npm publish                    # 稳定版本
+npm publish --tag beta         # 预发布版本
 ```
+
+**发布验证**：
+- 确认 GitHub Release 已创建：https://github.com/MasonChow/source-map-parser/releases
+- 检查 npm 包状态：https://www.npmjs.com/package/source-map-parser
+- 验证 crates.io 发布：https://crates.io/crates/source_map_parser
 
 #### 4. 发布后检查
 
