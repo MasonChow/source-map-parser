@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 env:
   WASM_PACK_VERSION: 0.12.1
@@ -17,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}
+      is_beta: ${{ steps.extract.outputs.is_beta }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,18 +28,27 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
+          if echo "$VERSION" | grep -qiE 'beta|rc|alpha'; then
+            echo "is_beta=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_beta=false" >> $GITHUB_OUTPUT
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag version: $VERSION"
-      - name: Check crate versions match tag
+      - name: Check node crate version matches tag
         run: |
           TAG_VERSION=${{ steps.extract.outputs.version }}
-          CORE_VERSION=$(grep '^version' crates/source_map_parser/Cargo.toml | head -1 | cut -d '"' -f2)
-          NODE_VERSION=$(grep '^version' crates/node_sdk/Cargo.toml | head -1 | cut -d '"' -f2)
-          echo "core: $CORE_VERSION  node: $NODE_VERSION  tag: $TAG_VERSION"
-          if [ "$CORE_VERSION" != "$TAG_VERSION" ] || [ "$NODE_VERSION" != "$TAG_VERSION" ]; then
-            echo "Version mismatch. Please bump crate versions to $TAG_VERSION before tagging." >&2
-            exit 1
+          FILE=crates/node_sdk/Cargo.toml
+          CURRENT=$(grep '^version' "$FILE" | head -1 | cut -d '"' -f2)
+          echo "current: $CURRENT tag: $TAG_VERSION"
+          if [ "$CURRENT" != "$TAG_VERSION" ]; then
+            echo "Adjusting version in $FILE -> $TAG_VERSION"
+            # replace first occurrence of version line under [package]
+            awk -v ver="$TAG_VERSION" 'BEGIN{done=0} /^version *=/ && done==0 {print "version = \"" ver "\""; done=1; next} {print}' "$FILE" > /tmp/_tmp && mv /tmp/_tmp "$FILE"
           fi
+          grep '^version' "$FILE" | head -1
+      - name: (Optional) Show diff after version sync
+        run: git diff --name-only && git --no-pager diff crates/node_sdk/Cargo.toml || true
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -79,32 +90,11 @@ jobs:
           name: changelog
           path: CHANGELOG.md
 
-  publish-crates:
-    needs: verify-and-test
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      - name: Cargo login
-        run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
-      - name: Publish core crate
-        run: |
-          cargo publish -p source_map_parser --no-verify || echo "core crate already published"
-      - name: Publish node wasm crate
-        run: |
-          cargo publish -p source_map_parser_node --no-verify || echo "node crate already published"
-
   publish-npm:
     needs: [verify-and-test]
     runs-on: ubuntu-latest
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # ensure repository secret NPM_TOKEN is set
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust
@@ -127,16 +117,32 @@ jobs:
         run: |
           wasm-pack build crates/node_sdk --target nodejs --out-dir pkg --release
           ls -l pkg
+      - name: Copy README into package
+        run: |
+          if [ -f crates/node_sdk/README.md ]; then
+            cp crates/node_sdk/README.md pkg/README.md
+            echo "Copied README.md into pkg/"
+          else
+            echo "crates/node_sdk/README.md not found" >&2
+          fi
       - name: Set npm auth
         run: |
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-      - name: Publish to npm
+      - name: Publish to npm (stable / beta)
         run: |
           cd pkg
-          npm publish --access public || echo "npm package already published"
+          VERSION=${{ needs.verify-and-test.outputs.version }}
+          IS_BETA=${{ needs.verify-and-test.outputs.is_beta }}
+          if [ "$IS_BETA" = "true" ]; then
+            echo "Publishing prerelease (beta) with dist-tag beta"
+            npm publish --tag beta --access public || echo "npm beta publish skipped"
+          else
+            echo "Publishing stable release"
+            npm publish --access public || echo "npm publish skipped"
+          fi
 
   github-release:
-    needs: [publish-crates, publish-npm]
+    needs: [publish-npm]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -158,55 +164,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: source-map-parser ${{ github.ref_name }}
           body_path: notes.txt
+          prerelease: ${{ needs.verify-and-test.outputs.is_beta == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-gitlab:
-    needs: [verify-and-test]
-    runs-on: ubuntu-latest
-    env:
-      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-      GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
-      GITLAB_PROJECT_PATH: ${{ secrets.GITLAB_PROJECT_PATH }}
-      VERSION: ${{ needs.verify-and-test.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Prepare artifacts
-        run: |
-          cargo package -p source_map_parser --allow-dirty
-          cargo package -p source_map_parser_node --allow-dirty
-          wasm-pack build crates/node_sdk --target nodejs --out-dir pkg --release
-          tar czf source_map_parser-${VERSION}.crate.tar.gz target/package/source_map_parser-*.crate
-          tar czf source_map_parser_node-${VERSION}.crate.tar.gz target/package/source_map_parser_node-*.crate
-          tar czf source_map_parser_node-wasm-${VERSION}.tgz -C pkg .
-      - name: Upload to GitLab generic packages
-        if: env.GITLAB_TOKEN != ''
-        run: |
-          for f in source_map_parser-${VERSION}.crate.tar.gz source_map_parser_node-${VERSION}.crate.tar.gz source_map_parser_node-wasm-${VERSION}.tgz; do
-            echo "Uploading $f"
-            curl --fail -H "PRIVATE-TOKEN: $GITLAB_TOKEN" --upload-file "$f" \
-              "https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/generic/source-map-parser/${VERSION}/$f"
-          done
-      - name: Publish to GitLab npm registry
-        if: env.GITLAB_TOKEN != ''
-        run: |
-          if [ -z "$GITLAB_PROJECT_PATH" ]; then
-            echo "GITLAB_PROJECT_PATH secret not set, skip GitLab npm publish";
-            exit 0;
-          fi
-          # Configure .npmrc for GitLab registry (avoid heredoc for YAML lint friendliness)
-          echo "@${GITLAB_PROJECT_PATH#*/}:registry=https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/" > .npmrc
-          echo "//gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/:_authToken=${GITLAB_TOKEN}" >> .npmrc
-          echo "always-auth=true" >> .npmrc
-          # Adjust package name for GitLab scope if needed
-          PACKAGE_JSON=pkg/package.json
-          if jq -e '.name' "$PACKAGE_JSON" >/dev/null 2>&1; then
-            ORIGINAL_NAME=$(jq -r '.name' $PACKAGE_JSON)
-            if [[ ! $ORIGINAL_NAME == @*/* ]]; then
-              # prepend scope from project path last segment
-              SCOPE="@${GITLAB_PROJECT_PATH##*/}"
-              TMP=$(mktemp)
-              jq --arg scope "$SCOPE" --arg name "$ORIGINAL_NAME" '.name = ($scope + "/" + $name)' $PACKAGE_JSON > $TMP && mv $TMP $PACKAGE_JSON
-            fi
-          fi
-          (cd pkg && npm publish --registry https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/npm/ || echo "GitLab npm publish skipped/failed")

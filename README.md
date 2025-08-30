@@ -47,29 +47,7 @@ fn main() {
 - SourceMapParserClient::map_stack_trace: 多行堆栈批量映射
 - SourceMapParserClient::map_error_stack: 带首行错误消息的整块错误堆栈映射，可选上下文
 
-## 迁移指引 (从旧版 js-stack-parser)
-
-| 旧接口                                                      | 新方式                                    |
-| ----------------------------------------------------------- | ----------------------------------------- |
-| generate_source_map_token(source_map_content, line, column) | SourceMapParserClient::new + lookup_token |
-| 逐行 regex 手工解析                                         | parse_stack_trace / parse_stack_line      |
-| 自行解析 sourcesContent                                     | SourceMapParserClient::unpack_all_sources |
-
-旧接口仍保留 (如 `token_generator::generate_source_map_token`) 以便平滑迁移。
-
-## 设计原则
-
-1. 纯计算，无网络 / 磁盘 I/O
-2. 失败可恢复：无法解析的堆栈行直接跳过
-3. 面向多端封装：Rust Facade 保持稳定 API
-4. 性能优先：最小复制，延迟解析
-
-## 后续计划
-
-- SourceMap 缓存层 (LRU)
-- 上下文代码可配置提取 API
-- Node / WASM 新 Facade 封装
-- 性能基准 & 监测脚本
+> 开发 / 构建 / 测试 / Roadmap 请见: [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 ## 通用上下文查询示例
 
@@ -86,118 +64,23 @@ fn main() {
 }
 ```
 
-## WASM (Node) 导出快速使用
+## Node / WASM 使用
 
-生成后的 Node 包 (`crates/node_sdk/pkg`) 暴露以下函数：
+Node (WASM 绑定) 的全部 API、构建、测试、发布指引已迁移至 `crates/node_sdk/README.md`：
 
-| 函数                                                         | 说明                                   |
-| ------------------------------------------------------------ | -------------------------------------- |
-| `lookup_token(sm, line, column)`                             | 获取原始行列 Token                     |
-| `lookup_token_with_context(sm, line, column, context_lines)` | 获取带上下文 Token                     |
-| `lookup_context(sm, line, column, context_lines)`            | 仅获取上下文片段 (ContextSnippet)      |
-| `map_stack_line(sm, stack_line)`                             | 单行堆栈 -> Token                      |
-| `map_stack_line_with_context(sm, stack_line, context_lines)` | 单行堆栈 -> 带上下文 Token             |
-| `map_stack_trace(sm, stack_trace)`                           | 多行堆栈批量映射 (不含首行错误消息)    |
-| `map_error_stack(sm, error_stack_raw, context_lines?)`       | 整段错误堆栈 (含首行) 映射，可选上下文 |
+- 参见: [Node / WASM 使用说明](./crates/node_sdk/README.md)
 
-Node 端示例：
-
-```bash
-node - <<'EOF'
-const m = require('./crates/node_sdk/pkg');
-const sm = JSON.stringify({version:3,sources:['a.js'],sourcesContent:['fn()\n'],names:[],mappings:'AAAA'});
-console.log(JSON.parse(m.lookup_token(sm,1,0)));
-EOF
-```
-
-## 开发
-
-```bash
-cargo test
-```
-
-### WASM 测试 (Node)
-
-使用 `wasm-pack test --node` 运行 `crates/node_sdk` 下的绑定测试：
-
-```bash
-wasm-pack test --node crates/node_sdk
-```
-
-（不覆盖浏览器环境；如未来需要再扩展）
-
-CI 已提供 GitHub Actions 工作流 `.github/workflows/ci.yml`，覆盖：
-
-1. Rust 原生单元/集成测试
-2. Node 环境下 WASM 测试 (wasm-pack test --node)
-
-调试提示：
-
-- 确认已安装目标：`rustup target add wasm32-unknown-unknown`
-- 避免直接 `cargo test --target wasm32-unknown-unknown`（缺少 runner 会尝试执行 .wasm 导致 126 错误）
-- 添加新测试需使用 `#[wasm_bindgen_test]` 标注函数
+根 README 仅保留 Rust 与整体介绍，避免重复维护。
 
 更多多端使用方式：
 
-- [web/deno 使用方式](./crates/web_pkg/README.md)
+- [web / deno 使用方式](./crates/web_pkg/README.md) (占位，如存在)
 - [rust 使用方式](./crates/source_map_parser/README.md)
 
-## 构建部署
+---
 
-本地或 CI 均可构建（标准 Rust + wasm-pack 工具链）。
+### 更多文档
 
-- 安装 Rust 工具链：推荐使用 [rustup](https://rustup.rs/)。
-- 安装 wasm-pack：参考官方安装指引 [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)。
-
-### 构建
-
-```bash
-bash build.sh
-```
-
-### WASM 构建 (Node 目标)
-
-当前仓库的 WASM 导出 crate 位于 `crates/node_sdk`，提供面向 Node.js (CommonJS) 的 API。根目录是一个 Cargo workspace（无 `[package]`），因此直接在根执行 `wasm-pack build` 会出现：
-
-```
-TOML parse error at line 1, column 1
-missing field `package`
-```
-
-请进入具体 crate 或使用提供的脚本：
-
-```bash
-# 方式 1: 进入 crate 手动构建
-cd crates/node_sdk
-wasm-pack build --target nodejs --release
-
-# 方式 2: 在仓库根使用脚本
-bash scripts/build-wasm-node.sh
-```
-
-构建输出目录：`crates/node_sdk/pkg`，包含 `package.json`, `.wasm`, 以及绑定 JS 文件，可直接 `require()` 使用。
-
-快速 Node 端调用示例（假设在仓库根运行）：
-
-```bash
-node - <<'EOF'
-const m = require('./crates/node_sdk/pkg');
-const sm = JSON.stringify({version:3,sources:['a.js'],sourcesContent:['fn()\n'],names:[],mappings:'AAAA'});
-console.log(JSON.parse(m.lookup_token(sm,1,0)));
-EOF
-```
-
-（不提供浏览器 / ESM 目标，本分支仅关注 Node 使用）
-
-## TODO / Roadmap (扩展)
-
-- [ ] Node 原生 N-API 封装 (基于 napi-rs)，提供更低调用开销 & Zero-Copy Buffer 传递
-  - [ ] 新建 crate: `crates/node_napi` (napi-rs + feature gate)
-  - [ ] 暴露与 WASM 一致的高层 API (`lookup_token`, `map_error_stack` 等)
-  - [ ] Benchmark: N-API vs WASM (cold/warm 多次调用)
-  - [ ] 添加 TypeScript 声明 / 自动生成 d.ts
-- [ ] SourceMap 缓存 LRU (可选容量 & 命中统计)
-- [ ] CLI: `sourcemap-lookup` 支持批量堆栈文件解析
-- [ ] Web 目标 (独立 `web_sdk` crate) 支持 ESM + Tree-shaking
-- [ ] 性能基准脚本 (criterion / Node benchmark) 与 README 指标展示
-- [ ] 发布流程脚本（版本号同步、npm publish、Git tag）
+- 开发/构建/Roadmap: [DEVELOPMENT.md](./DEVELOPMENT.md)
+- Node / WASM 使用: [crates/node_sdk/README.md](./crates/node_sdk/README.md)
+- Rust crate 细节: [crates/source_map_parser/README.md](./crates/source_map_parser/README.md)

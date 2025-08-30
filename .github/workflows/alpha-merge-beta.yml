@@ -1,0 +1,86 @@
+name: Alpha Merge -> Beta Publish
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'alpha/**'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  beta-publish:
+    if: github.event.pull_request.merged == true && startsWith(github.base_ref, 'alpha/')
+    runs-on: ubuntu-latest
+    env:
+      WASM_PACK_VERSION: 0.12.1
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Derive base version
+        id: base
+        run: |
+          # base branch name alpha/x.y.z
+          BASE_BRANCH="${GITHUB_BASE_REF}" # alpha/1.2.3
+          RAW=${BASE_BRANCH#alpha/}
+          echo "raw=$RAW" >> $GITHUB_OUTPUT
+      - name: Find latest beta tag
+        id: find
+        run: |
+          RAW=${{ steps.base.outputs.raw }}
+          # list existing beta tags vRAW-beta.N
+          LAST=$(git tag --list "v${RAW}-beta.*" | sed -E 's/.*-beta\.([0-9]+)/\1/' | sort -n | tail -1)
+          if [ -z "$LAST" ]; then NEXT=0; else NEXT=$((LAST+1)); fi
+          echo "next=$NEXT" >> $GITHUB_OUTPUT
+          echo "Will create beta index $NEXT for $RAW"
+      - name: Bump Cargo.toml versions (beta)
+        run: |
+          RAW=${{ steps.base.outputs.raw }}
+          BETA_IDX=${{ steps.find.outputs.next }}
+          VERSION="${RAW}-beta.${BETA_IDX}"
+          for FILE in crates/source_map_parser/Cargo.toml crates/node_sdk/Cargo.toml; do
+            awk -v ver="$VERSION" 'BEGIN{done=0} /^version *=/ && done==0 {print "version = \"" ver "\""; done=1; next} {print}' "$FILE" > /tmp/_tmp && mv /tmp/_tmp "$FILE"
+          done
+          # sync dependency inside node_sdk
+          sed -i.bak -E "s/source_map_parser = \{ version = \"[^\"]+\"/source_map_parser = { version = \"$VERSION\"/" crates/node_sdk/Cargo.toml || true
+          rm -f crates/node_sdk/Cargo.toml.bak
+          echo "Updated versions to $VERSION"
+      - name: Commit version bump to alpha & cherry-pick to release
+        run: |
+          git config user.name 'github-actions'
+            git config user.email 'github-actions@users.noreply.github.com'
+          RAW=${{ steps.base.outputs.raw }}
+          BETA_IDX=${{ steps.find.outputs.next }}
+          VERSION="${RAW}-beta.${BETA_IDX}"
+          git add crates/*/Cargo.toml
+          git commit -m "chore(release): v$VERSION" || echo "No changes"
+          # push to alpha
+          git push origin "${GITHUB_BASE_REF}" || true
+          # update release branch
+          REL_BRANCH="release/${RAW}"
+          git fetch origin "$REL_BRANCH":"$REL_BRANCH" || true
+          git checkout "$REL_BRANCH"
+          git cherry-pick "${GITHUB_BASE_REF}" || echo "Cherry-pick skipped"
+          git push origin "$REL_BRANCH" || true
+          # back to alpha
+          git checkout "${GITHUB_BASE_REF}"
+      - name: Generate CHANGELOG fragment
+        run: |
+          chmod +x scripts/generate-changelog.sh || true
+          RAW=${{ steps.base.outputs.raw }}
+          BETA_IDX=${{ steps.find.outputs.next }}
+          VERSION="${RAW}-beta.${BETA_IDX}"
+          ./scripts/generate-changelog.sh "$VERSION" "${{ github.server_url }}/${{ github.repository }}" || echo "No changelog script"
+      - name: Create beta tag & push
+        run: |
+          RAW=${{ steps.base.outputs.raw }}
+          BETA_IDX=${{ steps.find.outputs.next }}
+          VERSION="${RAW}-beta.${BETA_IDX}"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+      - name: Trigger release workflow (uses tag push)
+        run: echo "Tag pushed triggers existing Release workflow"
