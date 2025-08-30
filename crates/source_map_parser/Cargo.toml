@@ -1,7 +1,7 @@
 [package]
 name = "source_map_parser"
 description = "Parse and map JavaScript (and other) stack traces back to original source via source maps"
-version = "0.1.0-beta.0"
+version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
