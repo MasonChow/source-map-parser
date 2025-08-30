@@ -27,3 +27,5 @@ dist/
 crates/js_sdk/pkg
 
 .vscode
+
+!CLAUDE.md
