@@ -65,13 +65,23 @@ jobs:
         run: |
           TARGET='${{ inputs.target }}'
           git tag "v$TARGET"
-          git push origin "v$TARGET"
+          if [ -n "${{ secrets.PAT_TOKEN }}" ]; then
+            echo "Pushing tag with PAT_TOKEN"
+            git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }} "v$TARGET"
+          else
+            echo "Pushing tag with default GITHUB_TOKEN"
+            git push origin "v$TARGET"
       - name: Open PR back to main
-        if: inputs.dry_run != 'true'
+        if: ${{ inputs.dry_run != 'true' && secrets.PAT_TOKEN != '' }}
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.PAT_TOKEN }}
           branch: chore/merge-release-v${{ inputs.target }}
           title: 'chore: merge release v${{ inputs.target }} into main'
           body: 'Stable release v${{ inputs.target }} merge back to main'
           base: main
           labels: release
+      - name: Skip PR (no PAT_TOKEN)
+        if: ${{ inputs.dry_run != 'true' && secrets.PAT_TOKEN == '' }}
+        run: |
+          echo 'PAT_TOKEN not provided: skipping PR creation (set repository secret PAT_TOKEN to enable)'
