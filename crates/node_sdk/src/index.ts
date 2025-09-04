@@ -30,7 +30,7 @@ export async function mapErrorStackWithResolver(options: {
   return lowLevel.generate_token_by_stack_raw(
     errorStack,
     formatter ?? null,
-    (p: string) => resolveSourceMap(p) ?? '',
+    (p: string) => resolveSourceMap(p) ?? null,
     onError ?? null
   );
 }
