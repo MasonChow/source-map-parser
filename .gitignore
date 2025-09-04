@@ -31,3 +31,7 @@ crates/js_sdk/pkg
 !CLAUDE.md
 
 !.claude
+
+# BMAD Method temporary files
+.current-feature-branch
+.bmad-temp/
