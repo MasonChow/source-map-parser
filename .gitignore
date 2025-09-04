@@ -35,3 +35,8 @@ crates/js_sdk/pkg
 # BMAD Method temporary files
 .current-feature-branch
 .bmad-temp/
+
+
+node_modules/
+
+pnpm-lock.yaml

@@ -1,7 +1,39 @@
+<div align="center">
+
 # source_map_parser_node
 
-**高性能 Source Map 解析 & 错误堆栈映射 (WASM)**  
-Rust 实现 + wasm-bindgen 导出，面向 Node.js 生产错误还原、调试定位、上下文截取。
+高性能 Source Map 解析 & 错误堆栈映射（Rust + WASM）
+
+`dist/` 目录提供稳定的库模式入口；`pkg/` 保留底层 wasm-bindgen 原始输出。
+
+</div>
+
+> 自 v0.1.x 起：推荐使用 **库模式封装层 (dist)**。仍可通过 `source_map_parser_node/raw` 访问原始绑定。完全 **ESM only**，不再提供 CJS 入口。
+
+## 🚀 TL;DR
+
+```ts
+import smp, {
+  lookup_token,
+  mapErrorStackWithResolver,
+} from 'source_map_parser_node';
+
+await smp.init(); // 幂等，可省略
+
+const token = JSON.parse(lookup_token(sourceMapContent, 1, 0));
+
+const batch = await smp.mapErrorStackWithResolver({
+  errorStack: someStackString,
+  resolveSourceMap: (p) => cache.get(p),
+});
+```
+
+| 层级     | 入口                         | 用途             | 特点                                     |
+| -------- | ---------------------------- | ---------------- | ---------------------------------------- |
+| 高级封装 | `source_map_parser_node`     | 直接业务使用     | 有 `init`、辅助包装函数                  |
+| 原始绑定 | `source_map_parser_node/raw` | 自己做包装、调试 | wasm-pack 生成；所有函数返回 JSON 字符串 |
+
+---
 
 ## ✨ 特性
 
@@ -21,12 +53,13 @@ npm install source_map_parser_node
 
 > 如果你是从源码构建，请在仓库根执行 `bash scripts/build-wasm-node.sh`，然后 `require('./crates/node_sdk/pkg')`。
 
-## ⚡ 快速上手
+## ⚡ 快速上手（库模式）
 
-```js
-const wasm = require('source_map_parser_node');
+```ts
+import smp, { lookup_token } from 'source_map_parser_node';
 
-// 示例最小 sourcemap
+// 你也可以：import * as raw from 'source_map_parser_node/raw'
+
 const sm = JSON.stringify({
   version: 3,
   sources: ['a.js'],
@@ -35,23 +68,20 @@ const sm = JSON.stringify({
   mappings: 'AAAA',
 });
 
-// 所有导出函数都返回 JSON 字符串，需要再 JSON.parse 一次
-const token = JSON.parse(wasm.lookup_token(sm, 1, 0));
+await smp.init(); // 幂等
+const token = JSON.parse(lookup_token(sm, 1, 0));
 console.log(token);
 ```
 
-### 一个便捷的包装函数
+### 原始层快速包装
 
-```js
-const W = require('source_map_parser_node');
-const call = (fn, ...args) => JSON.parse(W[fn](...args));
-
-const tok = call('lookup_token', sm, 1, 0);
+```ts
+import * as raw from 'source_map_parser_node/raw';
+const json = raw.lookup_token(sm, 1, 0);
+const tok = JSON.parse(json);
 ```
 
-## 🧪 API 速览
-
-所有函数同步返回 JSON 字符串，请自行 `JSON.parse`。
+## 🧪 API 速览（均返回 JSON 字符串）
 
 | 函数                                                                     | 作用                     | 关键参数                       | 返回结构（概念）                             |
 | ------------------------------------------------------------------------ | ------------------------ | ------------------------------ | -------------------------------------------- |
@@ -65,7 +95,7 @@ const tok = call('lookup_token', sm, 1, 0);
 | `generate_token_by_single_stack(line,column,sm,contextOffset?)`          | 直接行列生成             | 可选上下文偏移                 | `Token \| null`                              |
 | `generate_token_by_stack_raw(stackRaw, formatter?, resolver?, onError?)` | 批量任务模式             | 自定义路径改写/内容解析        | `{ stacks, success, fail }`                  |
 
-### generate_token_by_stack_raw 说明
+### `generate_token_by_stack_raw` 说明
 
 ```ts
 generate_token_by_stack_raw(
@@ -137,3 +167,106 @@ MIT
 ---
 
 欢迎提 Issue / PR 改进 API；更多开发 / 发布流程参见仓库根 `CONTRIBUTORS.md`。
+
+## 🔀 模块与分层策略
+
+| 目录/入口                    | 说明                                        | 适用场景                             |
+| ---------------------------- | ------------------------------------------- | ------------------------------------ |
+| `dist/index.es.js`           | 库模式（Vite 构建），顶层已完成 wasm 初始化 | 生产业务、通用集成                   |
+| `pkg/*.js/wasm`              | wasm-pack 原始输出                          | 调试、二次封装、对 wasm 行为精准控制 |
+| `source_map_parser_node/raw` | 指向 `pkg/source_map_parser_node.js`        | 需要最原始绑定                       |
+
+特性：
+
+- 仅 ESM：无需 CJS 分发路径，减少条件分支
+- wasm 静态导入：让现代打包器可执行拓扑分析与缓存
+- 测试使用 alias 指向 dist，保证真实发布路径被验证
+
+### 常见集成模式
+
+| 场景           | 推荐   | 说明                  |
+| -------------- | ------ | --------------------- |
+| Web 服务 / SSR | 库模式 | 直接 import 即可      |
+| CLI / 本地工具 | 库模式 | 体积接受、维护简单    |
+| 极限性能实验   | 原始层 | 自行管理缓存/解析策略 |
+
+### 从旧版本迁移
+
+旧：`import * as wasm from 'source_map_parser_node'` （直接就是原始层）  
+新：
+
+```diff
+- import * as wasm from 'source_map_parser_node';
++ import smp, * as wasm from 'source_map_parser_node'; // 保持原有 API 同时获得封装
++ await smp.init();
+```
+
+## 🧠 高级封装：`mapErrorStackWithResolver`
+
+```ts
+import smp from 'source_map_parser_node';
+const result = await smp.mapErrorStackWithResolver({
+  errorStack: rawError.stack,
+  resolveSourceMap: (fp) => lru.get(fp),
+  formatter: (fp) => (fp.endsWith('.map') ? fp : fp + '.map'),
+  onError: (line, msg) => console.warn('[SM_FAIL]', line, msg),
+});
+```
+
+返回即为底层 `generate_token_by_stack_raw` 解析结构。
+
+## 🧩 构建 & 测试
+
+本仓库内部：
+
+```bash
+pnpm run build:lib   # 构建 dist
+pnpm test            # 预设 pretest 钩子可自动构建
+```
+
+Vite / Vitest 需要：
+
+```ts
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
+export default defineConfig({
+  plugins: [wasm(), topLevelAwait()],
+});
+```
+
+## 📦 体积与优化建议
+
+- 若生产体积仍偏大，可使用 `wasm-opt -Oz`（需要安装 binaryen）
+- 频繁重复解析同一 sourcemap：上层缓存其字符串；或追加一个 JS 侧 LRU
+- 批量 stack 解析优先使用 `generate_token_by_stack_raw` 减少往返
+
+## 🧪 返回 JSON 的再封装（可选）
+
+在你的代码中可创建一个轻量包装：
+
+```ts
+import { lookup_token as _lookup } from 'source_map_parser_node';
+export const lookupToken = (sm: string, line: number, col: number) =>
+  JSON.parse(_lookup(sm, line, col));
+```
+
+## 🔒 运行时注意事项
+
+- 行号传入：1-based；列：0-based
+- sourcemap 必须符合 v3 标准；异常返回结构含有 `error`
+- Node 需支持 ESM + WebAssembly（Node 16+ 建议 18+）
+
+## 🧩 Vite / Vitest 使用提示
+
+由于 bundler 目标使用了 **WebAssembly ESM 集成提案** 语法，直接在 Vite 中需要插件支持：
+
+```ts
+// vitest.config.ts / vite.config.ts
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
+export default defineConfig({
+  plugins: [wasm(), topLevelAwait()],
+});
+```
+
+若你的构建工具不支持上面语法，可改用 `wasm-pack --target nodejs` 或自己写 `fetch + WebAssembly.instantiate` 包装。
