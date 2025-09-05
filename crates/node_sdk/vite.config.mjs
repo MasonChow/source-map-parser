@@ -11,23 +11,24 @@ import { resolve } from 'path';
 
 export default defineConfig({
   build: {
-    sourcemap: true,
+    sourcemap: false,
+    minify: false,
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'SourceMapParserNode',
       fileName: () => 'index.es.js',
-      formats: ['es']
+      formats: ['es'],
     },
     rollupOptions: {
       // 目前无需 external；若未来把 wasm 运行时或其他依赖拆分可在此声明
       external: [],
       output: {
-        exports: 'named'
-      }
+        exports: 'named',
+      },
     },
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'es2022'
+    target: 'es2022',
   },
   plugins: [wasm(), topLevelAwait()],
 });

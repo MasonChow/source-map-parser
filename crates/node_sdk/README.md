@@ -1,272 +1,186 @@
-<div align="center">
+# source-map-parser-node
 
-# source_map_parser_node
+一个高性能的 Source Map 解析库，基于 Rust + WebAssembly 构建，提供 JavaScript 堆栈解析和 Source Map 位置映射功能。
 
-高性能 Source Map 解析 & 错误堆栈映射（Rust + WASM）
-
-`dist/` 目录提供稳定的库模式入口；`pkg/` 保留底层 wasm-bindgen 原始输出。
-
-</div>
-
-> 自 v0.1.x 起：推荐使用 **库模式封装层 (dist)**。仍可通过 `source_map_parser_node/raw` 访问原始绑定。完全 **ESM only**，不再提供 CJS 入口。
-
-## 🚀 TL;DR
-
-```ts
-import smp, {
-  lookup_token,
-  mapErrorStackWithResolver,
-} from 'source_map_parser_node';
-
-await smp.init(); // 幂等，可省略
-
-const token = JSON.parse(lookup_token(sourceMapContent, 1, 0));
-
-const batch = await smp.mapErrorStackWithResolver({
-  errorStack: someStackString,
-  resolveSourceMap: (p) => cache.get(p),
-});
-```
-
-| 层级     | 入口                         | 用途             | 特点                                     |
-| -------- | ---------------------------- | ---------------- | ---------------------------------------- |
-| 高级封装 | `source_map_parser_node`     | 直接业务使用     | 有 `init`、辅助包装函数                  |
-| 原始绑定 | `source_map_parser_node/raw` | 自己做包装、调试 | wasm-pack 生成；所有函数返回 JSON 字符串 |
-
----
-
-## ✨ 特性
-
-- 行 / 列 -> 原始源码定位 (`lookup_*` 系列)
-- 错误堆栈行解析与批量映射 (`map_stack_*` / `map_error_stack`)
-- 上下文代码片段提取（含目标行标记）
-- 批量 token 生成（可自定义 source 路径格式化 + sourcemap 解析）
-- 纯 WASM，无运行时本地依赖，冷启动快
-
-## 📦 安装
+## 安装
 
 ```bash
-npm install source_map_parser_node
-# 或 pnpm add source_map_parser_node
-# 或 yarn add source_map_parser_node
+npm install source-map-parser-node
 ```
 
-> 如果你是从源码构建，请在仓库根执行 `bash scripts/build-wasm-node.sh`，然后 `require('./crates/node_sdk/pkg')`。
+## 快速开始
 
-## ⚡ 快速上手（库模式）
+### 基本用法
 
-```ts
-import smp, { lookup_token } from 'source_map_parser_node';
+```javascript
+const { lookupToken, mapStackLine } = require('source-map-parser-node');
 
-// 你也可以：import * as raw from 'source_map_parser_node/raw'
+// 从文件或网络加载 source map 内容
+const sourceMapContent = fs.readFileSync('bundle.js.map', 'utf8');
 
-const sm = JSON.stringify({
-  version: 3,
-  sources: ['a.js'],
-  sourcesContent: ['function fn(){}\n'],
-  names: [],
-  mappings: 'AAAA',
-});
-
-await smp.init(); // 幂等
-const token = JSON.parse(lookup_token(sm, 1, 0));
+// 映射单个位置
+const token = lookupToken(sourceMapContent, 10, 25);
 console.log(token);
+// {
+//   "src": "src/index.ts",
+//   "line": 5,
+//   "column": 10,
+//   "name": "myFunction"
+// }
+
+// 映射堆栈行
+const stackLine = "at myFunction (bundle.js:10:25)";
+const mapped = mapStackLine(sourceMapContent, stackLine);
+console.log(mapped);
+// {
+//   "src": "src/index.ts",
+//   "line": 5,
+//   "column": 10,
+//   "name": "myFunction",
+//   "original": "at myFunction (bundle.js:10:25)"
+// }
 ```
 
-### 原始层快速包装
+### 批量处理错误堆栈
 
-```ts
-import * as raw from 'source_map_parser_node/raw';
-const json = raw.lookup_token(sm, 1, 0);
-const tok = JSON.parse(json);
+```javascript
+const { generateTokenByStackRaw } = require('source-map-parser-node');
+
+const errorStack = `
+Error: Something went wrong
+    at myFunction (bundle.js:10:25)
+    at anotherFunction (bundle.js:15:8)
+    at main (bundle.js:20:3)
+`;
+
+// 定义 source map 解析器
+const resolver = (sourcePath) => {
+  if (sourcePath === 'bundle.js') {
+    return fs.readFileSync('bundle.js.map', 'utf8');
+  }
+  return null;
+};
+
+const result = generateTokenByStackRaw(errorStack, null, resolver);
+console.log(result.success); // 成功映射的 token 列表
+console.log(result.fail);     // 映射失败的堆栈信息
 ```
 
-## 🧪 API 速览（均返回 JSON 字符串）
+## API 参考
 
-| 函数                                                                     | 作用                     | 关键参数                       | 返回结构（概念）                             |
-| ------------------------------------------------------------------------ | ------------------------ | ------------------------------ | -------------------------------------------- |
-| `lookup_token(sm, line, column)`                                         | 基础定位                 | 目标行列（1-based line）       | `{ src, line, column, name? }`               |
-| `lookup_token_with_context(sm, line, column, contextLines)`              | 定位 + 上下文            | `contextLines` 上下文行数      | `{ token, context:[{line,is_target,code}] }` |
-| `lookup_context(sm, line, column, contextLines)`                         | 仅上下文片段             | 同上                           | `{ src,line,column,context[] }`              |
-| `map_stack_line(sm, stackLine)`                                          | 单行堆栈 -> token        | V8 / Safari / Firefox 常见格式 | `Token \| null`                              |
-| `map_stack_line_with_context(sm, stackLine, contextLines)`               | 同上 + 上下文            |                                | `TokenWithContext \| null`                   |
-| `map_stack_trace(sm, stackTrace)`                                        | 多行（不含首行错误消息） | 原始文本                       | `Array<Token \| null>`                       |
-| `map_error_stack(sm, errorStack, contextLines?)`                         | 整段（含首行）           | 可选上下文                     | `{ message, mapped:[...] }`                  |
-| `generate_token_by_single_stack(line,column,sm,contextOffset?)`          | 直接行列生成             | 可选上下文偏移                 | `Token \| null`                              |
-| `generate_token_by_stack_raw(stackRaw, formatter?, resolver?, onError?)` | 批量任务模式             | 自定义路径改写/内容解析        | `{ stacks, success, fail }`                  |
+### lookupToken(sourceMapContent, line, column)
 
-### `generate_token_by_stack_raw` 说明
+映射单个位置到源代码位置。
 
-```ts
-generate_token_by_stack_raw(
-  stackRaw: string,
-  formatter?: (sourcePath: string) => string,
-  resolver?: (sourcePath: string) => string, // 返回 sourcemap 内容字符串
-  onError?: (stackLineRaw: string, reason: string) => void
-): string // JSON
+- `sourceMapContent`: string - Source Map 内容字符串
+- `line`: number - 编译后代码的行号
+- `column`: number - 编译后代码的列号
+
+返回: `{ src: string, line: number, column: number, name?: string }`
+
+### lookupTokenWithContext(sourceMapContent, line, column, contextLines)
+
+映射位置并获取上下文代码。
+
+- `contextLines`: number - 上下文的行数
+
+返回: 包含上下文信息的 token 对象
+
+### mapStackLine(sourceMapContent, stackLine)
+
+映射单行堆栈信息。
+
+- `stackLine`: string - 堆栈行字符串，如 "at myFunction (bundle.js:10:25)"
+
+返回: 映射后的堆栈信息对象
+
+### mapStackTrace(sourceMapContent, stackTrace)
+
+映射完整的堆栈跟踪。
+
+- `stackTrace`: string - 完整的堆栈跟踪字符串
+
+返回: 映射后的堆栈信息数组
+
+### mapErrorStack(sourceMapContent, errorStackRaw, contextLines?)
+
+映射完整的错误堆栈。
+
+- `errorStackRaw`: string - 原始错误堆栈字符串
+- `contextLines`: number (可选) - 上下文行数
+
+返回: 映射后的错误堆栈对象
+
+### generateTokenByStackRaw(stackRaw, formatter?, resolver?, onError?)
+
+批量处理错误堆栈并生成 token。
+
+- `stackRaw`: string - 原始堆栈文本
+- `formatter`: Function (可选) - 源文件路径格式化函数
+- `resolver`: Function (可选) - Source Map 内容解析器
+- `onError`: Function (可选) - 错误处理回调
+
+返回: `{ success: Token[], fail: GenerateFailStack[], stacks: Stack[] }`
+
+## 高级用法
+
+### 自定义源文件路径映射
+
+```javascript
+const formatter = (sourcePath) => {
+  // 添加 .map 后缀
+  return sourcePath + '.map';
+};
+
+const resolver = (formattedPath) => {
+  return fs.readFileSync(formattedPath, 'utf8');
+};
+
+const result = generateTokenByStackRaw(errorStack, formatter, resolver);
 ```
 
-使用示例：
+### 异步 Source Map 加载
 
-```js
-const raw = `Error: boom\n    at foo (/dist/app.js:10:15)\n    at bar (/dist/app.js:20:3)`;
-const result = JSON.parse(
-  wasm.generate_token_by_stack_raw(
-    raw,
-    (p) => p.replace('/dist/', '/dist/') + '.map', // formatter，可选
-    (p) => loadSourceMapFromCache(p), // resolver，返回 sourcemap 字符串
-    (l, r) => console.warn('FAIL', l, r) // onError，可选
-  )
-);
-console.log(result.success); // 已解析 token 列表
-console.log(result.fail); // 失败的帧
-```
-
-## 🧵 典型场景
-
-1. 生产错误堆栈实时还原：`map_error_stack` + 预先缓存的 sourcemap
-2. CLI / 构建后调试：手动读取 `.map` 文件，用 `lookup_token*`
-3. 日志离线批处理：`generate_token_by_stack_raw` 批量映射
-4. IDE 插件 / 可视化：使用 `lookup_context` 获取上下文代码片段渲染
-
-## 🛡️ 错误与健壮性
-
-- 返回的 JSON 若含有 `{"error":"..."}` 表示 sourcemap 解析失败
-- `map_*` 系列找不到映射时会返回 `null`
-- 请确保传入的 `line` 为 1-based（列为 0-based）
-
-## 📏 性能提示
-
-- 同一个 sourcemap 多次查询：上层自行缓存字符串或封装延迟解析（当前 WASM 侧会为每次调用构建 client）
-- 大型 sourcemap 建议放在内存缓存或 KV（`resolver` 中实现）
-
-## 🧬 TypeScript 使用
-
-包内附带 `.d.ts`，直接：
-
-```ts
-import * as smp from 'source_map_parser_node';
-const token = JSON.parse(smp.lookup_token(sm, 10, 0));
-```
-
-可自行声明更语义化类型：
-
-```ts
-interface Token {
-  src: string;
-  line: number;
-  column: number;
-  name?: string;
+```javascript
+async function asyncResolver(sourcePath) {
+  const response = await fetch(`/source-maps/${sourcePath}.map`);
+  return await response.text();
 }
+
+// 注意：当前版本需要同步 resolver，异步场景需要在外部处理
 ```
 
-## 📄 License
+## 性能特性
 
-MIT
+- 🚀 基于 Rust + WebAssembly 构建，性能卓越
+- 📦 零依赖，轻量级包体积
+- 🔍 支持多种 JavaScript 引擎堆栈格式（V8、Firefox、Safari）
+- 🗺️ 完整的 Source Map v3 规范支持
+- 🎯 精确的位置映射和上下文提取
 
----
+## 浏览器支持
 
-欢迎提 Issue / PR 改进 API；更多开发 / 发布流程参见仓库根 `CONTRIBUTORS.md`。
+支持所有现代浏览器和 Node.js 环境：
 
-## 🔀 模块与分层策略
+- Node.js 14+
+- Chrome 60+
+- Firefox 60+
+- Safari 14+
+- Edge 79+
 
-| 目录/入口                    | 说明                                        | 适用场景                             |
-| ---------------------------- | ------------------------------------------- | ------------------------------------ |
-| `dist/index.es.js`           | 库模式（Vite 构建），顶层已完成 wasm 初始化 | 生产业务、通用集成                   |
-| `pkg/*.js/wasm`              | wasm-pack 原始输出                          | 调试、二次封装、对 wasm 行为精准控制 |
-| `source_map_parser_node/raw` | 指向 `pkg/source_map_parser_node.js`        | 需要最原始绑定                       |
-
-特性：
-
-- 仅 ESM：无需 CJS 分发路径，减少条件分支
-- wasm 静态导入：让现代打包器可执行拓扑分析与缓存
-- 测试使用 alias 指向 dist，保证真实发布路径被验证
-
-### 常见集成模式
-
-| 场景           | 推荐   | 说明                  |
-| -------------- | ------ | --------------------- |
-| Web 服务 / SSR | 库模式 | 直接 import 即可      |
-| CLI / 本地工具 | 库模式 | 体积接受、维护简单    |
-| 极限性能实验   | 原始层 | 自行管理缓存/解析策略 |
-
-### 从旧版本迁移
-
-旧：`import * as wasm from 'source_map_parser_node'` （直接就是原始层）  
-新：
-
-```diff
-- import * as wasm from 'source_map_parser_node';
-+ import smp, * as wasm from 'source_map_parser_node'; // 保持原有 API 同时获得封装
-+ await smp.init();
-```
-
-## 🧠 高级封装：`mapErrorStackWithResolver`
-
-```ts
-import smp from 'source_map_parser_node';
-const result = await smp.mapErrorStackWithResolver({
-  errorStack: rawError.stack,
-  resolveSourceMap: (fp) => lru.get(fp),
-  formatter: (fp) => (fp.endsWith('.map') ? fp : fp + '.map'),
-  onError: (line, msg) => console.warn('[SM_FAIL]', line, msg),
-});
-```
-
-返回即为底层 `generate_token_by_stack_raw` 解析结构。
-
-## 🧩 构建 & 测试
-
-本仓库内部：
+## 开发构建
 
 ```bash
-pnpm run build:lib   # 构建 dist
-pnpm test            # 预设 pretest 钩子可自动构建
+# 安装 wasm-pack
+cargo install wasm-pack
+
+# 构建 WASM 包
+wasm-pack build --target nodejs
+
+# 运行测试
+wasm-pack test --node
 ```
 
-Vite / Vitest 需要：
+## 许可证
 
-```ts
-import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
-export default defineConfig({
-  plugins: [wasm(), topLevelAwait()],
-});
-```
-
-## 📦 体积与优化建议
-
-- 若生产体积仍偏大，可使用 `wasm-opt -Oz`（需要安装 binaryen）
-- 频繁重复解析同一 sourcemap：上层缓存其字符串；或追加一个 JS 侧 LRU
-- 批量 stack 解析优先使用 `generate_token_by_stack_raw` 减少往返
-
-## 🧪 返回 JSON 的再封装（可选）
-
-在你的代码中可创建一个轻量包装：
-
-```ts
-import { lookup_token as _lookup } from 'source_map_parser_node';
-export const lookupToken = (sm: string, line: number, col: number) =>
-  JSON.parse(_lookup(sm, line, col));
-```
-
-## 🔒 运行时注意事项
-
-- 行号传入：1-based；列：0-based
-- sourcemap 必须符合 v3 标准；异常返回结构含有 `error`
-- Node 需支持 ESM + WebAssembly（Node 16+ 建议 18+）
-
-## 🧩 Vite / Vitest 使用提示
-
-由于 bundler 目标使用了 **WebAssembly ESM 集成提案** 语法，直接在 Vite 中需要插件支持：
-
-```ts
-// vitest.config.ts / vite.config.ts
-import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
-export default defineConfig({
-  plugins: [wasm(), topLevelAwait()],
-});
-```
-
-若你的构建工具不支持上面语法，可改用 `wasm-pack --target nodejs` 或自己写 `fetch + WebAssembly.instantiate` 包装。
+MIT License

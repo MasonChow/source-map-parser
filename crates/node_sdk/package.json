@@ -4,7 +4,7 @@
     "MasonChow <masonchat@foxmail.com>"
   ],
   "description": "A WebAssembly package for source_map_parser",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "type": "module",
   "files": [
@@ -15,13 +15,7 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.es.js"
-    },
-    "./wasm": "./pkg/source_map_parser_node_bg.wasm",
-    "./raw": {
-      "types": "./pkg/source_map_parser_node.d.ts",
-      "import": "./pkg/source_map_parser_node.js"
     }
   },
   "scripts": {
