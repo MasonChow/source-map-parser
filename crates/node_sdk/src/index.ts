@@ -7,15 +7,15 @@
 import * as lowLevel from '../pkg/source_map_parser_node.js';
 
 // 再导出所有低层 API，保持向后兼容。
-export * from '../pkg/source_map_parser_node.js';
+// export * from '../pkg/source_map_parser_node.js';
 
 // 提供一个可显式调用的 init（幂等），方便在某些 SSR/自定义加载场景中手动控制。
-let _inited = false;
+let _inited: any;
 export async function init(): Promise<void> {
-  if (_inited) return;
-  // 这里实际上只要执行过绑定文件的顶层代码就已经初始化，
-  // 但为了语义化，仍然提供一个 Promise 接口，未来可在此扩展（例如自定义 wasm fetch）。
-  _inited = true;
+  if (!_inited) {
+    _inited = await import('../pkg/source_map_parser_node.js');
+  };
+  return _inited;
 }
 
 // 提供一个辅助方法，对常见用例进行包装示例（非必须，可选增强）。
@@ -37,7 +37,7 @@ export async function mapErrorStackWithResolver(options: {
 
 // 默认导出整体 API（含原始导出与封装方法）。
 export default {
+  ...lowLevel,
   init,
   mapErrorStackWithResolver,
-  ...lowLevel,
 };
