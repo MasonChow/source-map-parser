@@ -14,7 +14,7 @@ export default defineConfig({
     minify: false,
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      fileName: () => 'index.es.js',
+      fileName: () => 'index.js',
       formats: ['es'],
     },
     rollupOptions: {

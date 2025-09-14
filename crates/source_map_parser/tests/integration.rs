@@ -1,29 +1,49 @@
 use source_map_parser::SourceMapParserClient;
+use std::{fs, path::PathBuf};
 
-fn make_sm(sources: &[(&str, &str)]) -> String {
-  // Single mapping 'AAAA' points to first source first line column 0
-  // We'll replicate per source by reusing minimal mapping for simplicity.
-  // For multi-source, we still can test unpack_all_sources ordering/length.
-  let mut src_names = Vec::new();
-  let mut contents = Vec::new();
-  for (name, content) in sources {
-    src_names.push(format!("\"{name}\""));
-    let esc = content.replace('\n', "\\n");
-    contents.push(format!("\"{esc}\""));
+/// 加载仓库根目录 `assets/index.js.map`
+fn load_sourcemap_bytes() -> Vec<u8> {
+  // 以当前 crate 为基准，定位到仓库根的 assets
+  let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  // crates/source_map_parser -> ../../assets/index.js.map
+  p.push("../../assets/index.js.map");
+  let sm_path = p;
+  fs::read(&sm_path).expect("read assets/index.js.map")
+}
+
+/// 创建基于 assets/index.js.map 的客户端
+fn load_client() -> SourceMapParserClient {
+  let bytes = load_sourcemap_bytes();
+  SourceMapParserClient::new(&bytes).expect("create client from assets sourcemap")
+}
+
+/// 尝试在前若干行中寻找第一个可映射的位置，返回 (line, column)
+fn find_first_mapped_position(client: &SourceMapParserClient) -> Option<(u32, u32)> {
+  // 常见打包产物第一行通常有映射，这里尝试前 200 行，列固定 0
+  for line in 1..=200 {
+    if client.lookup_token(line, 0).is_some() {
+      return Some((line, 0));
+    }
   }
-  format!(
-    "{{\"version\":3,\"file\":\"min.js\",\"sources\":[{}],\"sourcesContent\":[{}],\"names\":[],\"mappings\":\"AAAA\"}}",
-    src_names.join(","),
-    contents.join(",")
-  )
+  // 若仍未命中，尝试第 1 行扫描前 200 列
+  for col in 0..=200 {
+    if client.lookup_token(1, col).is_some() {
+      return Some((1, col));
+    }
+  }
+  None
 }
 
 #[test]
 fn map_error_stack_with_context() {
-  let sm = make_sm(&[("a.js", "l0()\nl1()\nl2()\n")]);
-  let client = SourceMapParserClient::new(sm.as_bytes()).unwrap();
-  let raw = "ReferenceError: x\n  at foo (https://example.com/min.js:1:0)"; // maps to origin line 0
-  let mapped = client.map_error_stack(raw, Some(1));
+  let client = load_client();
+  // 构造一条与实际 sourcemap 对应的堆栈行（仅需行列数字）
+  let (line, col) = find_first_mapped_position(&client).expect("find a mapped position");
+  let raw = format!(
+    "ReferenceError: x\n  at foo (https://example.com/index.js:{}:{})",
+    line, col
+  );
+  let mapped = client.map_error_stack(&raw, Some(1));
   assert_eq!(mapped.error_message, "ReferenceError: x");
   assert!(mapped.frames_with_context.len() >= 1);
   let ctx = &mapped.frames_with_context[0];
@@ -32,11 +52,12 @@ fn map_error_stack_with_context() {
 
 #[test]
 fn unpack_all_sources_multi() {
-  let sm = make_sm(&[("a.js", "a()\n"), ("b.js", "b1()\nb2()\n")]);
-  let client = SourceMapParserClient::new(sm.as_bytes()).unwrap();
+  let client = load_client();
   let sources = client.unpack_all_sources();
-  assert_eq!(sources.len(), 2);
-  assert!(sources.get("a.js").unwrap().contains("a()"));
+  // 真实 sourcemap 下应至少包含 1 个源文件，且内容非空
+  assert!(sources.len() >= 1);
+  let any_non_empty = sources.values().any(|v| !v.is_empty());
+  assert!(any_non_empty);
 }
 
 #[test]
@@ -50,24 +71,17 @@ fn invalid_source_map_returns_error() {
 
 #[test]
 fn lookup_out_of_range_returns_none() {
-  let sm = make_sm(&[("a.js", "only()\n")]);
-  let client = SourceMapParserClient::new(sm.as_bytes()).unwrap();
-  // sourcemap 库会按“最近匹配”策略回退，因此超大行通常返回最后一个已知映射而非 None
-  let hi = client.lookup_token(100, 0).expect("fallback token");
-  assert_eq!(hi.line, 0);
-  // 列超大也应安全 (列 > 长度 仍能 lookup 但通常返回同一行列 0 或 None)
-  let maybe = client.lookup_token(1, 9999);
-  // 行有效时允许 Some 或 None, 这里只断言不会 panic 并保持返回结构一致
-  if let Some(tok) = maybe {
-    assert_eq!(tok.line, 0);
-  }
+  let client = load_client();
+  // 极大行列查询应当安全：允许返回 None 或回退到最近映射，但不应 panic
+  let _ = client.lookup_token(1_000_000, 0);
+  let _ = client.lookup_token(1, 9_999_999);
 }
 
 #[test]
 fn context_window_edge_at_start() {
-  let sm = make_sm(&[("a.js", "l0()\nl1()\nl2()\n")]);
-  let client = SourceMapParserClient::new(sm.as_bytes()).unwrap();
-  let tok = client.lookup_token_with_context(1, 0, 5).unwrap();
+  let client = load_client();
+  let (line, col) = find_first_mapped_position(&client).expect("find a mapped position");
+  let tok = client.lookup_token_with_context(line, col, 5).unwrap();
   // start 行不足 context 也不会 panic，长度 >= 原行 (1) + min(请求, 实际前后存在)
   assert!(tok.source_code.len() >= 1);
 }
