@@ -83,8 +83,8 @@ let _initPromise: Promise<LowLevelModule> | null = null;
 export async function init(): Promise<LowLevelModule> {
   if (wasm) return wasm;
   if (_initPromise) return _initPromise;
-  _initPromise = import('../pkg/source_map_parser_node.js').then((m: any) => {
-    wasm = m as LowLevelModule;
+  _initPromise = import('../pkg/source_map_parser_node.js').then((m: LowLevelModule) => {
+    wasm = m;
     return m;
   }).finally(() => {
     // 允许后续再次调用 init() 直接返回 wasm
