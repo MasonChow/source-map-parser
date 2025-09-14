@@ -7,8 +7,7 @@ fn load_sourcemap_bytes() -> Vec<u8> {
   let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
   // crates/source_map_parser -> ../../assets/index.js.map
   p.push("../../assets/index.js.map");
-  let sm_path = p;
-  fs::read(&sm_path).expect("read assets/index.js.map")
+  fs::read(&p).expect("read assets/index.js.map")
 }
 
 /// 创建基于 assets/index.js.map 的客户端
