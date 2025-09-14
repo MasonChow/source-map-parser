@@ -98,7 +98,7 @@ export async function init(): Promise<LowLevelModule> {
  */
 function getWasmOrThrow(): LowLevelModule {
   if (!wasm) {
-    throw new Error('[source_map_parser_node] wasm 尚未初始化，请先调用 init() 再使用该方法');
+    throw new Error('[source_map_parser_node] wasm has not been initialized. Please call init() before using this method.');
   }
   return wasm;
 }
