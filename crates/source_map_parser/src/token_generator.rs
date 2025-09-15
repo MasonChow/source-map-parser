@@ -28,7 +28,7 @@ pub fn generate_source_map_token_from_map(
   }
   if let Some(token) = source_map.lookup_token(line - 1, column) {
     Some(SourceMapToken {
-      line: token.get_src_line() as u32,
+      line: token.get_src_line() + 1,
       column: token.get_src_col() as u32,
       source_code: token.get_source_view().map(|v| v.source().to_string()),
       src: token.get_source().map(|s| s.to_string()),
@@ -210,7 +210,7 @@ pub fn generate_context_token_from_map(
     for ln in start..=end {
       let raw = lines.get(ln as usize).cloned().unwrap_or("").to_string();
       token.source_code.push(SourceCode {
-        line: ln,
+        line: ln + 1,
         is_stack_line: ln == origin_line,
         raw,
       });
