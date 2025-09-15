@@ -15,12 +15,13 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.es.js"
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
     "build:lib": "vite build",
-    "build": "bash ../../scripts/build-wasm-node.sh && vite build",
+    "build:types": "tsc -p tsconfig.json",
+    "build": "bash ../../scripts/build-wasm-node.sh && vite build && tsc -p tsconfig.json",
     "pretest": "pnpm run build:lib",
     "test": "pnpm pretest && vitest --run",
     "test:coverage": "vitest --coverage",

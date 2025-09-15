@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import * as wasm from 'source_map_parser_node';
+import { init } from 'source_map_parser_node';
 
-// await wasm.init();
+let wasm;
 
 beforeAll(async () => {
-  await wasm.init();
+  wasm = await init();
 });
 
 // 简单 source map 生成器

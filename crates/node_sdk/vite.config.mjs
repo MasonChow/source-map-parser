@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
-import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve } from 'path';
 
 // 构建说明：
@@ -15,8 +14,7 @@ export default defineConfig({
     minify: false,
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'SourceMapParserNode',
-      fileName: () => 'index.es.js',
+      fileName: () => 'index.js',
       formats: ['es'],
     },
     rollupOptions: {
@@ -28,7 +26,7 @@ export default defineConfig({
     },
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'es2022',
+    target: 'node20', // 保持与 wasm 绑定一致
   },
-  plugins: [wasm(), topLevelAwait()],
+  plugins: [wasm()],
 });
