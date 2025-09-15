@@ -1,5 +1,7 @@
 # source_map_parser
 
+[![npm](https://img.shields.io/npm/v/source_map_parser_node.svg)](https://www.npmjs.com/package/source_map_parser_node)
+
 通用 Source Map 解析与源码还原核心库。支持：
 
 - JS 多引擎错误堆栈解析 (V8 / Firefox / Safari)
