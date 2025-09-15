@@ -51,7 +51,7 @@ pub fn lookup_context_from_sourcemap(
   }
   Some(ContextSnippet {
     src,
-    line: origin_line,
+    line: origin_line + 1,
     column: origin_col,
     context,
   })
