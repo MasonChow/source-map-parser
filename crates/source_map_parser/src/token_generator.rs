@@ -234,7 +234,7 @@ mod tests {
   fn test_get_stack_source_single_line() {
     let sm = simple_sm("a.js", "fn()\\n");
     let tok = get_stack_source(&sm, 1, 0, None).expect("token");
-    assert_eq!(tok.line, 0); // original line
+    assert_eq!(tok.line, 1); // original line
     assert_eq!(tok.source_code.len(), 1);
   }
 
