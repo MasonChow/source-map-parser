@@ -12,6 +12,27 @@ npm install source_map_parser_node
 pnpm add source_map_parser_node
 ```
 
+## Packaged skill
+
+This npm package also ships an integration skill for AI or LLM tooling consumers.
+
+- Installed path: `node_modules/source_map_parser_node/skills/source-map-parser-node-integration/SKILL.md`
+- Eval prompts: `node_modules/source_map_parser_node/skills/source-map-parser-node-integration/evals/evals.json`
+
+If you are building agent workflows around this package, prefer the packaged skill so usage guidance stays aligned with the published npm version.
+
+If your agent tooling supports `skills add`, install the packaged skill after `npm install` with:
+
+```bash
+skills add ./node_modules/source_map_parser_node/skills/source-map-parser-node-integration
+```
+
+You can also install it directly from the GitHub repository without depending on `node_modules`:
+
+```bash
+skills add https://github.com/MasonChow/source-map-parser.git
+```
+
 ## 快速开始
 
 ### 初始化

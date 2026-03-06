@@ -1,0 +1,23 @@
+{
+  "skill_name": "source-map-parser-node-integration",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Inside a Node 18 logging service, I receive full browser `error.stack` payloads and different frames can point to different bundle URLs. I can read each `.map` file from storage by URL. Based on this repository's Node SDK, give me the most reliable integration pattern.",
+      "expected_output": "It should prefer mapErrorStackWithResolver or generate_token_by_stack_raw, and clearly explain the roles of init, resolver, and onError.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Write a TypeScript example that reads a local `bundle.js.map`, restores `at myFunction (bundle.js:10:25)` back to the original source, and includes two lines of surrounding context.",
+      "expected_output": "It should use await init together with map_stack_line or lookup_token_with_context, and the example should use ESM syntax.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I want to wrap this package into a reusable `mapFrontendError()` helper for internal Node services, and failed frames must not block successful ones. Give me an integration design.",
+      "expected_output": "It should recommend wrapping mapErrorStackWithResolver or generate_token_by_stack_raw and preserving the success and fail split in the returned structure.",
+      "files": []
+    }
+  ]
+}

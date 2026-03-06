@@ -1,0 +1,23 @@
+{
+  "skill_name": "source-map-parser-rust-integration",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want a Rust worker to consume frontend error stacks and matching sourcemaps, then restore every `ReferenceError` frame back to the original source with context. Based on this repository's Rust crate, give me the smallest viable integration approach.",
+      "expected_output": "It should prefer SourceMapParserClient::new together with map_error_stack, and explain context_lines, frames_with_context, line-number conventions, and caller-owned sourcemap loading.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Write Rust code that takes bundle line and column values plus the contents of a `.js.map` file, then outputs the original source path, original line and column, and two lines of source before and after the target line.",
+      "expected_output": "It should use lookup_token_with_context or lookup_context, and the code should be directly usable in a Rust service or CLI.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The user did not provide full error stacks. They only gave me many `bundle.js:line:column` positions. I want to do offline bulk restoration in Rust. How should I integrate this library?",
+      "expected_output": "It should avoid forcing map_error_stack and instead recommend point-by-point processing with lookup_token or lookup_token_with_context, with a clear explanation of why.",
+      "files": []
+    }
+  ]
+}

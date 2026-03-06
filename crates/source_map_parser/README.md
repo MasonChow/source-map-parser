@@ -9,6 +9,25 @@
 source_map_parser = { git = "<your git repo url>" }
 ```
 
+## AI skill installation
+
+This crate also includes a packaged integration skill in this repository:
+
+- Skill path: `crates/source_map_parser/skills/source-map-parser-rust-integration/`
+- Skill entrypoint: `crates/source_map_parser/skills/source-map-parser-rust-integration/SKILL.md`
+
+If your agent tooling supports `skills add`, install it from the repository root with:
+
+```bash
+skills add ./crates/source_map_parser/skills/source-map-parser-rust-integration
+```
+
+You can also install it directly from the GitHub repository instead of cloning first:
+
+```bash
+skills add https://github.com/MasonChow/source-map-parser.git
+```
+
 ## 快速开始
 
 ```rust
