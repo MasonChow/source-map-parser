@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to package, for example v0.4.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package ${{ matrix.os }} / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: windows-latest
+            platform: windows
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    env:
+      WASM_PACK_VERSION: 0.12.1
+      PACKAGE_NAME: source_map_parser_node
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+          override: true
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install wasm-pack
+        shell: bash
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked
+          fi
+      - name: Install Node dependencies
+        working-directory: crates/node_sdk
+        run: pnpm install --no-frozen-lockfile
+      - name: Run Rust tests
+        run: cargo test --workspace --exclude source_map_parser_node --all-features
+      - name: Run WASM tests
+        run: wasm-pack test --node crates/node_sdk
+      - name: Build Node/WASM package
+        working-directory: crates/node_sdk
+        run: pnpm run build
+      - name: Stage release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then TAG="${{ github.event.inputs.tag }}"; fi
+          STAGE="release/${PACKAGE_NAME}-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$STAGE/bin" "$STAGE/dist" "$STAGE/skills"
+          cp -R crates/node_sdk/dist/. "$STAGE/dist/"
+          cp -R crates/node_sdk/bin/. "$STAGE/bin/"
+          cp -R crates/node_sdk/skills/. "$STAGE/skills/"
+          cp crates/node_sdk/README.md "$STAGE/README.md"
+          cp LICENSE "$STAGE/LICENSE"
+          cp crates/node_sdk/package.json "$STAGE/package.json"
+          printf '%s\n' "$TAG" > "$STAGE/VERSION"
+          tar -czf "release/${PACKAGE_NAME}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" -C release "${PACKAGE_NAME}-${{ matrix.platform }}-${{ matrix.arch }}"
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/${{ env.PACKAGE_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+
+  publish-github-release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: release-artifacts/*.tar.gz
+          generate_release_notes: true

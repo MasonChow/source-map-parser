@@ -191,3 +191,35 @@ pnpm test        # 运行 vitest 测试
 ## 许可证
 
 MIT License
+
+## CLI 安装与更新
+
+从 npm 全局安装后会提供 `source-map-parser` 命令，并内置跨平台更新命令：
+
+```bash
+npm install -g source_map_parser_node
+source-map-parser update
+# 安装指定版本
+source-map-parser update --version 0.4.0
+```
+
+如果你不想依赖 npm，也可以在 Linux/macOS 或带 bash 的 Windows 环境中使用 GitHub Release 安装脚本。脚本会自动识别当前系统与 CPU 架构，从 tag 对应的 Release 资产中下载匹配的包：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh | bash
+# 安装指定 tag
+curl -fsSL https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh | bash -s -- --version v0.4.0
+```
+
+CLI 也可以通过 GitHub Release 方式自更新：
+
+```bash
+source-map-parser update --from github
+source-map-parser update --from github --version v0.4.0
+```
+
+> Windows 用户推荐使用 npm 更新；GitHub 安装脚本需要 Git Bash、MSYS2 或 WSL 等 bash 环境。
+
+## Tag Release 流程
+
+推送 `v*.*.*` tag 后，GitHub Actions 会在 Linux、macOS、Windows 三类环境中构建并测试 Node/WASM 包，然后把按平台命名的 `source_map_parser_node-<platform>-<arch>.tar.gz` 上传到对应 GitHub Release。用户可以通过上面的 bash 安装脚本或 `source-map-parser update --from github` 下载使用。
