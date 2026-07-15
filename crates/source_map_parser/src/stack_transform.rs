@@ -28,7 +28,7 @@ pub struct Stack<'a> {
   pub original_raw: &'a str,
 }
 
-pub fn parse_stack_line(original_raw: &str) -> Option<Stack> {
+pub fn parse_stack_line(original_raw: &str) -> Option<Stack<'_>> {
   let trimmed = original_raw.trim();
   if trimmed.matches(':').count() < 2 {
     return None;
@@ -82,7 +82,7 @@ pub fn parse_stack_line(original_raw: &str) -> Option<Stack> {
   None
 }
 
-pub fn parse_stack_trace(trace_string: &str) -> Vec<Stack> {
+pub fn parse_stack_trace(trace_string: &str) -> Vec<Stack<'_>> {
   trace_string
     .lines()
     .filter_map(|l| parse_stack_line(l.trim()))
@@ -97,7 +97,7 @@ pub struct ErrorStack<'a> {
 }
 
 impl ErrorStack<'_> {
-  pub fn from_raw(error_raw: &str) -> ErrorStack {
+  pub fn from_raw(error_raw: &str) -> ErrorStack<'_> {
     let mut stacks: Vec<Stack> = Vec::new();
     let mut error_message = String::new();
     for (index, line) in error_raw.lines().enumerate() {
@@ -131,8 +131,8 @@ mod tests {
     assert_eq!(stacks.len(), lines.len());
     assert_eq!(stacks[0].line, 10);
     assert_eq!(stacks[1].column, 15);
-  // The async prefix is ignored by the regex, only the method name is kept
-  assert_eq!(stacks[2].name, "bar");
+    // The async prefix is ignored by the regex, only the method name is kept
+    assert_eq!(stacks[2].name, "bar");
     assert_eq!(stacks[3].line, 40);
   }
 

@@ -68,6 +68,8 @@ jobs:
       - name: Build Node/WASM package
         working-directory: crates/node_sdk
         run: pnpm run build
+      - name: Build native CLI
+        run: cargo build --release --bin source-map-parser
       - name: Run Node SDK tests
         working-directory: crates/node_sdk
         run: pnpm test
@@ -88,6 +90,15 @@ jobs:
           printf '%s\n' "$TAG" > "$STAGE/VERSION"
           ARCHIVE="release/${PACKAGE_NAME}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz"
           tar -czf "$ARCHIVE" -C release "${PACKAGE_NAME}-${{ matrix.platform }}-${{ matrix.arch }}"
+          BIN_EXT=""
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then BIN_EXT=".exe"; fi
+          CLI_NAME="source-map-parser-${{ matrix.platform }}-${{ matrix.arch }}${BIN_EXT}"
+          cp "target/release/source-map-parser${BIN_EXT}" "release/${CLI_NAME}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd release && sha256sum "$CLI_NAME" > "$CLI_NAME.sha256")
+          else
+            shasum -a 256 "release/${CLI_NAME}" | sed "s#release/##" > "release/${CLI_NAME}.sha256"
+          fi
           if command -v sha256sum >/dev/null 2>&1; then
             (cd release && sha256sum "$(basename "$ARCHIVE")" > "$(basename "$ARCHIVE").sha256")
           else
@@ -100,6 +111,7 @@ jobs:
           path: |
             release/${{ env.PACKAGE_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
             release/${{ env.PACKAGE_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz.sha256
+            release/source-map-parser-${{ matrix.platform }}-${{ matrix.arch }}*
 
   publish-github-release:
     needs: package

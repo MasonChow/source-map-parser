@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/source_map_parser", "crates/node_sdk"]
+members = ["crates/source_map_parser", "crates/node_sdk", "crates/cli"]
 resolver = "2"
 
 [workspace.package]
