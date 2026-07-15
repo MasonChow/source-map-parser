@@ -57,20 +57,45 @@ else
 fi
 
 ASSET="${PACKAGE_NAME}-${OS}-${ARCH}.tar.gz"
-DOWNLOAD_URL="$(curl -fsSL "$API_URL" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const r=JSON.parse(d);const a=(r.assets||[]).find(x=>x.name==='${ASSET}')||(r.assets||[]).find(x=>x.name.endsWith('.tar.gz')); if(!a){process.exit(2)} console.log(a.browser_download_url)})")" || {
-  echo "Could not find a matching release asset for ${OS}/${ARCH}." >&2
+DOWNLOAD_URL="$(curl -fsSL "$API_URL" | ASSET="$ASSET" node -e '
+let data = "";
+process.stdin.on("data", (chunk) => { data += chunk; });
+process.stdin.on("end", () => {
+  const release = JSON.parse(data);
+  const asset = (release.assets || []).find((item) => item.name === process.env.ASSET);
+  if (!asset) process.exit(2);
+  console.log(asset.browser_download_url);
+});
+')" || {
+  echo "Could not find release asset ${ASSET}." >&2
   exit 1
 }
+CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/package.tar.gz"
+curl -fL "$DOWNLOAD_URL" -o "$TMP_DIR/$ASSET"
+if curl -fsL "$CHECKSUM_URL" -o "$TMP_DIR/$ASSET.sha256"; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$TMP_DIR" && sha256sum -c "$ASSET.sha256")
+  else
+    (cd "$TMP_DIR" && shasum -a 256 -c "$ASSET.sha256")
+  fi
+else
+  echo "Checksum file not found; continuing without checksum verification." >&2
+fi
 mkdir -p "$INSTALL_DIR" "$BIN_DIR"
-tar -xzf "$TMP_DIR/package.tar.gz" -C "$INSTALL_DIR" --strip-components=1
+tar -xzf "$TMP_DIR/$ASSET" -C "$INSTALL_DIR" --strip-components=1
 cat > "$BIN_DIR/source-map-parser" <<SHIM
 #!/usr/bin/env bash
 exec node "$INSTALL_DIR/bin/source-map-parser.mjs" "\$@"
 SHIM
 chmod +x "$BIN_DIR/source-map-parser"
+if [[ "$OS" == "windows" ]]; then
+  cat > "$BIN_DIR/source-map-parser.cmd" <<SHIM
+@echo off
+node "$INSTALL_DIR/bin/source-map-parser.mjs" %*
+SHIM
+fi
 echo "Installed source-map-parser to $BIN_DIR/source-map-parser"
 echo "If needed, add $BIN_DIR to PATH."

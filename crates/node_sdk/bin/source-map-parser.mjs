@@ -16,32 +16,48 @@ Commands:
   update    Update the global source_map_parser_node CLI/package.
 
 Options:
-  --version <version>   Install a specific version or tag. Defaults to latest.
+  --version <version>   Install a specific npm version or GitHub tag. Defaults to latest.
   --from <npm|github>   Update through npm or the GitHub install script. Defaults to npm.
 `);
 }
 
+function readOptionValue(argv, index, optionName) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`Missing value for ${optionName}`);
+  }
+  return value;
+}
+
 function parseArgs(argv) {
-  const args = { command: argv[2], version: 'latest', from: 'npm' };
+  const args = { command: argv[2], version: 'latest', from: 'npm', help: false };
   for (let i = 3; i < argv.length; i += 1) {
     const value = argv[i];
-    if (value === '--version') args.version = argv[++i] ?? 'latest';
-    else if (value === '--from') args.from = argv[++i] ?? 'npm';
-    else if (value === '--help' || value === '-h') args.help = true;
-    else throw new Error(`Unknown argument: ${value}`);
+    if (value === '--version') {
+      args.version = readOptionValue(argv, i, '--version');
+      i += 1;
+    } else if (value === '--from') {
+      args.from = readOptionValue(argv, i, '--from');
+      i += 1;
+    } else if (value === '--help' || value === '-h') {
+      args.help = true;
+    } else {
+      throw new Error(`Unknown argument: ${value}`);
+    }
   }
   return args;
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', shell: process.platform === 'win32', ...options });
+  const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 function updateFromNpm(version) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const spec = version === 'latest' ? PACKAGE_NAME : `${PACKAGE_NAME}@${version}`;
-  run('npm', ['install', '--global', spec]);
+  run(npmCommand, ['install', '--global', spec]);
 }
 
 function updateFromGitHub(version) {
@@ -49,8 +65,7 @@ function updateFromGitHub(version) {
     console.error('GitHub install script update requires bash. Use: source-map-parser update --from npm');
     process.exit(1);
   }
-  const script = `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- --version ${version}`;
-  run('bash', ['-lc', script]);
+  run('bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- --version "$1"`, 'source-map-parser-update', version]);
 }
 
 try {
