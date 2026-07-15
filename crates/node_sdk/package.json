@@ -9,6 +9,7 @@
   "type": "module",
   "files": [
     "dist/",
+    "bin/",
     "skills/",
     "README.md",
     "LICENSE"
@@ -36,5 +37,8 @@
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
     "vitest": "^2.0.5"
+  },
+  "bin": {
+    "source-map-parser": "./bin/source-map-parser.mjs"
   }
 }
