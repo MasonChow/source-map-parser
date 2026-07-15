@@ -12,8 +12,8 @@ usage() {
 Install source_map_parser_node from GitHub release artifacts.
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh | bash
-  bash scripts/install.sh --version v0.4.0 --install-dir ~/.source-map-parser --bin-dir ~/.local/bin
+  bash ./node_modules/source_map_parser_node/bin/install.sh
+  bash ./node_modules/source_map_parser_node/bin/install.sh --version v0.4.0 --install-dir ~/.source-map-parser --bin-dir ~/.local/bin
 
 Options:
   --version <tag|latest>   Release tag to install. Defaults to latest.

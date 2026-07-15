@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
 const PACKAGE_NAME = 'source_map_parser_node';
-const INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh';
+const INSTALL_SCRIPT_PATH = fileURLToPath(new URL('./install.sh', import.meta.url));
 
 function printHelp() {
   console.log(`source-map-parser CLI
@@ -65,7 +66,7 @@ function updateFromGitHub(version) {
     console.error('GitHub install script update requires bash. Use: source-map-parser update --from npm');
     process.exit(1);
   }
-  run('bash', ['-c', `curl -fsSL ${INSTALL_SCRIPT_URL} | bash -s -- --version "$1"`, 'source-map-parser-update', version]);
+  run('bash', [INSTALL_SCRIPT_PATH, '--version', version]);
 }
 
 try {

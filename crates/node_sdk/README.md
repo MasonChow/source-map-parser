@@ -203,12 +203,14 @@ source-map-parser update
 source-map-parser update --version 0.4.0
 ```
 
-如果你不想依赖 npm，也可以在 Linux/macOS 或带 bash 的 Windows 环境中使用 GitHub Release 安装脚本。脚本会自动识别当前系统与 CPU 架构，从 tag 对应的 Release 资产中下载匹配的包：
+如果你不想依赖 npm，也可以在 Linux/macOS 或带 bash 的 Windows 环境中使用随 Node 包一起分发的 GitHub Release 安装脚本。脚本会自动识别当前系统与 CPU 架构，从 tag 对应的 Release 资产中下载匹配的包：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh | bash
-# 安装指定 tag
-curl -fsSL https://raw.githubusercontent.com/MasonChow/source-map-parser/main/scripts/install.sh | bash -s -- --version v0.4.0
+# 本地依赖安装后使用
+bash ./node_modules/source_map_parser_node/bin/install.sh
+
+# 全局 npm 安装后使用
+bash "$(npm root -g)/source_map_parser_node/bin/install.sh" --version v0.4.0
 ```
 
 CLI 也可以通过 GitHub Release 方式自更新：
@@ -222,4 +224,4 @@ source-map-parser update --from github --version v0.4.0
 
 ## Tag Release 流程
 
-推送 `v*.*.*` tag 后，GitHub Actions 会在 Linux、macOS、Windows 三类环境中构建并测试 Node/WASM 包，然后把按平台命名的 `source_map_parser_node-<platform>-<arch>.tar.gz` 上传到对应 GitHub Release。用户可以通过上面的 bash 安装脚本或 `source-map-parser update --from github` 下载使用。
+推送 `v*.*.*` tag 后，GitHub Actions 会在 Linux、macOS、Windows 三类环境中构建并测试 Node/WASM 包，然后把按平台命名的 `source_map_parser_node-<platform>-<arch>.tar.gz` 上传到对应 GitHub Release。Release 包和 npm 包都会携带同一份 `bin/install.sh`，用户可以通过该脚本或 `source-map-parser update --from github` 下载使用。
