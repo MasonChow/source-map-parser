@@ -68,6 +68,9 @@ jobs:
       - name: Build Node/WASM package
         working-directory: crates/node_sdk
         run: pnpm run build
+      - name: Run Node SDK tests
+        working-directory: crates/node_sdk
+        run: pnpm test
       - name: Stage release package
         shell: bash
         run: |
